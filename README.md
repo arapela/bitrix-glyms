@@ -30,16 +30,25 @@ Antes de la primera ejecución, es crucial configurar correctamente las constant
 El script se ejecuta desde la línea de comandos.
 
 **Paso 1: Autorización Inicial (Primera Vez)**
+
 La primera vez que uses el script, o si el archivo bitrix24_tokens.json se borra, necesitas autorizarlo.
 
 -Abre la terminal y ejecuta el script sin argumentos: python sync_glyms_b24.py
+
 -El script te mostrará un mensaje indicando que no hay tokens y te proporcionará una URL.
+
 -Copia la URL proporcionada y pégala en un navegador web.
+
 -Inicia sesión en Bitrix24 y autoriza los permisos que la aplicación solicita.
+
 -El navegador será redirigido a una página (probablemente http://localhost) que mostrará un error de conexión. ¡Es normal! La URL en la barra de direcciones contendrá un código: http://localhost/?code=UN_CODIGO_LARGO_Y_SECRETO&...
+
 -Copia solamente el valor del código.
+
 -Vuelve a la terminal y ejecuta el script con el argumento --auth_code: python sync_glyms_b24.py --auth_code=EL_CODIGO_QUE_COPIASTE
+
 -Esto creará el archivo bitrix24_tokens.json y el script estará listo.
+
 **Paso 2: Ejecución Normal (Sincronización)**
 Para ejecutar las sincronizaciones, usa el argumento --sync_type:
 

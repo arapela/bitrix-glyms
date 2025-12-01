@@ -24,13 +24,20 @@ PG_LOG_TABLE_COMPANIES = "f_cliente.sync_log_bitrix24"
 PG_ID_CONTRATO_CLINICA = 14
 PG_ID_CONTRATO_VETERINARIA = 371
 PG_ID_CONTRATO_INDUSTRIA = 259
+PG_ID_CONTRATO_OSPERYH = 1155
 
 # Bitrix24
 B24_PORTAL_URL = "https://rapela.bitrix24.es"
 B24_CLIENT_ID = "local.6834eb05ed7532.57084891"
 B24_CLIENT_SECRET = "CbH8UjmJ26E4bnb1xV84047Lnxta4RTbcno5KuSmV0yVP9Yo1V"
 B24_TOKEN_FILE = "bitrix24_tokens.json"
-B24_PRICE_TYPE_ID_SERVICES = 2 
+B24_PRICE_TYPE_ID_SERVICES_BASE = 2
+B24_PRICE_TYPE_ID_SERVICES_OSPERYH = 4
+
+SERVICES_PRICE_TARGETS = [
+    {"field": "precio_base", "catalog_group_id": B24_PRICE_TYPE_ID_SERVICES_BASE},
+    {"field": "precio_osperyh", "catalog_group_id": B24_PRICE_TYPE_ID_SERVICES_OSPERYH},
+]
 
 # Configuración específica para Servicios del Catálogo
 B24_IBLOCK_ID_SERVICES = 24 
@@ -315,6 +322,20 @@ def set_product_price(product_id, price_value, currency, price_type_id):
     else:
         log_message(f"Error al establecer/actualizar precio para producto {product_id}: {response}")
         
+def sync_service_prices(product_id, glyms_service_data):
+    for target in SERVICES_PRICE_TARGETS:
+        field_name = target.get("field")
+        catalog_group_id = target.get("catalog_group_id")
+        if not field_name or not catalog_group_id:
+            continue
+        price_value = glyms_service_data.get(field_name)
+        if price_value is None:
+            continue
+        if isinstance(price_value, str) and not price_value.strip():
+            continue
+        set_product_price(product_id, price_value, B24_CURRENCY_ID_SERVICES, catalog_group_id)
+        time.sleep(0.1)
+        
         
 # --- Funciones de Sincronización ---
 def sync_services():
@@ -333,7 +354,8 @@ def sync_services():
                       f"     THEN (SELECT valor_unico FROM public.contrato_presta WHERE id_contrato = {PG_ID_CONTRATO_INDUSTRIA} AND p.codigo = codigo_presta ORDER BY fecha_version DESC LIMIT 1) "
                       "     WHEN id_tipo_ot = 3 "
                       f"     THEN (SELECT valor_unico FROM public.contrato_presta WHERE id_contrato = {PG_ID_CONTRATO_VETERINARIA} AND p.codigo = codigo_presta ORDER BY fecha_version DESC LIMIT 1) "
-                      "END as precio "
+                      "END as precio_base, "
+                      f"(SELECT valor_unico FROM public.contrato_presta WHERE id_contrato = {PG_ID_CONTRATO_OSPERYH} AND p.codigo = codigo_presta ORDER BY fecha_version DESC LIMIT 1) as precio_osperyh "
                       f"FROM {PG_VIEW_NAME_SERVICES} p "
                       "WHERE p.activa = 1")
     glyms_services_list = get_glyms_data(services_query, "servicios")
@@ -368,7 +390,6 @@ def sync_services():
             "detailText": glyms_service_data.get("comentario", ""),
             "code": glyms_service_data.get("codigo"),
         }
-        glyms_price = glyms_service_data.get("precio")
         if current_xml_id_svc in b24_managed_services:
             b24_service = b24_managed_services[current_xml_id_svc]
             b24_service_id = b24_service["id"]
@@ -380,7 +401,7 @@ def sync_services():
                 if not (response_update and response_update.get("result")):
                      log_message(f"Error al actualizar servicio {current_xml_id_svc}: {response_update}"); continue
             else: log_message(f"Servicio {current_xml_id_svc} no requiere actualización.")
-            set_product_price(b24_service_id, glyms_price, B24_CURRENCY_ID_SERVICES, B24_PRICE_TYPE_ID_SERVICES)
+            sync_service_prices(b24_service_id, glyms_service_data)
         else:
             log_message(f"Creando servicio en B24 para Glyms id_prestacion {current_xml_id_svc}")
             create_fields = {"iblockId": B24_IBLOCK_ID_SERVICES, "xmlId": current_xml_id_svc, **fields_to_send}
@@ -399,7 +420,7 @@ def sync_services():
                 new_b24_id = new_id_data.get("element", {}).get("id") or new_id_data.get("id") or (int(str(new_id_data)) if str(new_id_data).isdigit() else None)
                 if new_b24_id:
                     log_message(f"Servicio {current_xml_id_svc} CREADO con ID B24 {new_b24_id}.")
-                    set_product_price(new_b24_id, glyms_price, B24_CURRENCY_ID_SERVICES, B24_PRICE_TYPE_ID_SERVICES)
+                    sync_service_prices(new_b24_id, glyms_service_data)
                 else: log_message(f"Servicio {current_xml_id_svc} creado, ID no encontrado. Respuesta: {response_add}")
             else: log_message(f"Error al crear servicio {current_xml_id_svc}: {response_add}")
         time.sleep(0.3)
